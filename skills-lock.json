@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "fastapi-templates": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "0203bfffe99d99ad78e0efd8c0223737a211b97457b3270b694efb34f48153c4"
+    },
+    "integrate-whatsapp": {
+      "source": "gokapso/agent-skills",
+      "sourceType": "github",
+      "computedHash": "51f5f7406db562945c87aaf0892dd1d121088e0f13500ff5ecadf64ac1993f95"
+    },
+    "langgraph-docs": {
+      "source": "langchain-ai/deepagents",
+      "sourceType": "github",
+      "computedHash": "36357163de1472e570655b85879e60c228d97329ed2600fc042a7ac87cf54a5d"
+    },
+    "pinecone": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "computedHash": "496e45c1a8cf5d7c9568927e3f258609a3d498d8e0a8d32289d64945968107ca"
+    }
+  }
+}

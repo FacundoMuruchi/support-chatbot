@@ -1,0 +1,13 @@
+langgraph
+langchain
+langchain-text-splitters
+langchain-openai
+langchain-pinecone
+langsmith
+pinecone-client
+fastapi
+uvicorn[standard]
+httpx
+sqlalchemy
+psycopg2-binary
+python-dotenv

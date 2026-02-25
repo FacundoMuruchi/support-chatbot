@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres
+    container_name: fm_support_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: fm_user
+      POSTGRES_PASSWORD: fm_password
+      POSTGRES_DB: fm_support
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+volumes:
+  pgdata:
