@@ -30,9 +30,9 @@ WhatsApp → Kapso Webhook → FastAPI → LangGraph StateGraph
 | Componente | Tecnología |
 |---|---|
 | Orquestación | LangGraph (StateGraph) |
-| LLM | OpenRouter (`openai/gpt-oss-120b:free`) |
+| LLM | OpenRouter (Arcee AI: Trinity Large Preview 400B) |
 | Vector DB | Pinecone Serverless |
-| Embeddings | HuggingFace (`all-MiniLM-L6-v2`) |
+| Embeddings | Pinecone Inference (`llama-text-embed-v2`, 1024 dims) |
 | DB Relacional | PostgreSQL 16 (Docker) |
 | API | FastAPI + Uvicorn |
 | WhatsApp | Kapso (proxy de WhatsApp Cloud API) |
@@ -43,7 +43,8 @@ WhatsApp → Kapso Webhook → FastAPI → LangGraph StateGraph
 ### 1. Clonar y configurar entorno
 
 ```bash
-cd support
+git clone https://github.com/tu-usuario/fm-support.git
+cd fm-support
 python -m venv .venv
 .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
@@ -53,13 +54,13 @@ pip install -r requirements.txt
 
 ```bash
 copy .env.example .env
-# Editar .env con tus API keys (OpenRouter, Pinecone, Kapso, LangSmith)
+# Editar .env con tus API keys
 ```
 
 ### 3. Levantar PostgreSQL
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 4. Cargar datos en Pinecone
@@ -77,57 +78,55 @@ uvicorn app.api.main:app --reload --port 8000
 ### 6. Probar (sin WhatsApp)
 
 ```bash
-# Info sobre planes
 curl -X POST http://localhost:8000/test ^
   -H "Content-Type: application/json" ^
   -d "{\"text\": \"¿Qué planes tienen disponibles?\"}"
-
-# Reportar avería
-curl -X POST http://localhost:8000/test ^
-  -H "Content-Type: application/json" ^
-  -d "{\"text\": \"No tengo señal en zona norte, quiero reportar el problema\"}"
 ```
 
 ### 7. Conectar WhatsApp con Kapso
 
 1. Crear cuenta en [Kapso](https://kapso.ai) y obtener API key
-2. Configurar `KAPSO_API_BASE_URL` y `KAPSO_API_KEY` en `.env`
-3. Configurar webhook en Kapso apuntando a `https://tu-servidor/webhook`
-4. Suscribirse al evento `whatsapp.message.received`
+2. Configurar las variables `KAPSO_*` en `.env`
+3. Exponer el servidor con `ngrok http 8000`
+4. Configurar webhook en Kapso apuntando a `https://tu-url-ngrok/webhook`
 
 ## 📁 Estructura del Proyecto
 
 ```
 support/
 ├── app/
-│   ├── core/config.py              # Configuración centralizada
+│   ├── core/config.py              # Configuración centralizada (pydantic-settings)
 │   ├── db/
-│   │   ├── database.py             # SQLAlchemy engine/session
-│   │   └── models.py               # Modelo Ticket
-│   ├── rag/vectorstore.py          # Pinecone + embeddings
+│   │   ├── database.py             # SQLAlchemy engine/session (TZ: Buenos Aires)
+│   │   └── models.py               # Modelo Ticket (status, category enums)
+│   ├── rag/vectorstore.py          # Pinecone Inference embeddings wrapper
 │   ├── graph/
-│   │   ├── state.py                # Estado compartido (TypedDict)
+│   │   ├── state.py                # SupportState (hereda MessagesState)
 │   │   ├── graph.py                # Ensamblado del StateGraph
 │   │   └── nodes/
-│   │       ├── triage.py           # Router LLM
-│   │       ├── info_agent.py       # Agente RAG
-│   │       ├── support_agent.py    # Agente SQL Tools
-│   │       └── format_review.py    # Formateador WhatsApp
+│   │       ├── triage.py           # Router LLM (info | soporte)
+│   │       ├── info_agent.py       # Agente RAG (Pinecone + LLM)
+│   │       ├── support_agent.py    # Agente con Tool Calling (tickets)
+│   │       └── format_review.py    # Formateador para WhatsApp
 │   └── api/
-│       ├── main.py                 # FastAPI app
-│       ├── whatsapp.py             # Helpers Kapso/WhatsApp
-│       └── routes/webhook.py       # Endpoints
-├── scripts/seed_pinecone.py        # Seed de datos
-├── data/fm_data.json               # Datos ficticios FM.inc
-├── docker-compose.yml
+│       ├── main.py                 # FastAPI app + lifespan
+│       ├── whatsapp.py             # Parser Kapso + envío de mensajes
+│       └── routes/webhook.py       # Endpoint /webhook
+├── scripts/seed_pinecone.py        # Carga fm_data.txt → Pinecone
+├── data/fm_data.txt                # Datos de FM.inc (planes, cobertura, FAQ)
+├── docker-compose.yml              # PostgreSQL + Adminer
 └── requirements.txt
 ```
 
 ## 🧠 Conceptos Clave
 
 - **StateGraph**: Grafo basado en estados donde cada nodo lee y escribe un estado compartido.
-- **add_messages reducer**: Los mensajes se *acumulan* en vez de reemplazarse.
+- **MessagesState**: Los mensajes se *acumulan* automáticamente en vez de reemplazarse.
 - **Conditional Edges**: El nodo de triaje decide dinámicamente qué agente invocar.
-- **Tool Calling**: El agente de soporte usa el LLM para decidir qué herramienta SQL invocar.
+- **Tool Calling**: El agente de soporte usa el LLM para decidir qué herramienta SQL ejecutar.
 - **RAG**: El agente de información combina búsqueda semántica (Pinecone) con generación (LLM).
-- **Kapso Proxy**: WhatsApp Cloud API con auth simplificada (`X-API-Key`), historial de mensajes y webhooks estructurados.
+- **Pinecone Inference**: Embeddings generados server-side con `llama-text-embed-v2` (1024 dims).
+
+## 📄 Licencia
+
+MIT
