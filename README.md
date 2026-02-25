@@ -14,15 +14,21 @@ WhatsApp → Kapso Webhook → FastAPI → LangGraph StateGraph
                             info │                 │ soporte
                                  ▼                 ▼
                           ┌──────────────┐  ┌──────────────┐
-                          │ Agente Info  │  │Agente Soporte│
-                          │   (RAG)      │  │  (SQL Tools) │
-                          └──────┬───────┘  └──────┬───────┘
-                                 └────────┬────────┘
+                          │ Agente Info  │  │Agente Soporte│←──┐
+                          │   (RAG)      │  │  (ToolNode)  │   │
+                          └──────┬───────┘  └──────┬───────┘   │
+                                 │          tools_condition    │
+                                 │            ↓          ↓     │
+                                 │         [tools] ──────┘   (no)
+                                 └────────┬────────────────────┘
                                     ┌─────┴─────┐
                                     │  Formato   │  (WhatsApp-ready)
                                     └─────┬─────┘
-                                          ▼
-                                 Kapso → WhatsApp Reply
+                                   should_summarize?
+                                    ↓            ↓
+                              summarize        [END]
+                                    ↓
+                                  [END]
 ```
 
 ## 🚀 Stack Tecnológico
@@ -30,10 +36,12 @@ WhatsApp → Kapso Webhook → FastAPI → LangGraph StateGraph
 | Componente | Tecnología |
 |---|---|
 | Orquestación | LangGraph (StateGraph) |
-| LLM | OpenRouter (Arcee AI: Trinity Large Preview 400B) |
+| LLM Principal | OpenRouter → Arcee AI Trinity Large Preview 400B |
+| LLM Rápido | OpenRouter → NVIDIA Nemotron 3 Nano 30B (formato + resumen) |
 | Vector DB | Pinecone Serverless |
 | Embeddings | Pinecone Inference (`llama-text-embed-v2`, 1024 dims) |
-| DB Relacional | PostgreSQL 16 (Docker) |
+| DB Relacional | PostgreSQL (Docker) |
+| Memoria | LangGraph PostgresSaver (checkpointer por thread_id) |
 | API | FastAPI + Uvicorn |
 | WhatsApp | Kapso (proxy de WhatsApp Cloud API) |
 | Observabilidad | LangSmith |
@@ -95,26 +103,29 @@ curl -X POST http://localhost:8000/test ^
 ```
 support/
 ├── app/
-│   ├── core/config.py              # Configuración centralizada (pydantic-settings)
+│   ├── core/
+│   │   ├── config.py              # Configuración centralizada
+│   │   └── llm.py                 # Instancias LLM compartidas (llm, llm_strict, llm_format)
 │   ├── db/
-│   │   ├── database.py             # SQLAlchemy engine/session (TZ: Buenos Aires)
-│   │   └── models.py               # Modelo Ticket (status, category enums)
-│   ├── rag/vectorstore.py          # Pinecone Inference embeddings wrapper
+│   │   ├── database.py            # SQLAlchemy engine/session (TZ: Buenos Aires)
+│   │   └── models.py              # Modelo Ticket (status, category enums)
+│   ├── rag/vectorstore.py         # Pinecone Inference embeddings wrapper
 │   ├── graph/
-│   │   ├── state.py                # SupportState (hereda MessagesState)
-│   │   ├── graph.py                # Ensamblado del StateGraph
+│   │   ├── state.py               # SupportState (messages, user_phone, intent, summary...)
+│   │   ├── graph.py               # StateGraph + ToolNode + ReAct loop + summarize
 │   │   └── nodes/
-│   │       ├── triage.py           # Router LLM (info | soporte)
-│   │       ├── info_agent.py       # Agente RAG (Pinecone + LLM)
-│   │       ├── support_agent.py    # Agente con Tool Calling (tickets)
-│   │       └── format_review.py    # Formateador para WhatsApp
+│   │       ├── triage.py          # Router LLM (info | soporte)
+│   │       ├── info_agent.py      # Agente RAG (Pinecone + historial + summary)
+│   │       ├── support_agent.py   # Agente con ToolNode (tickets DB)
+│   │       ├── format_review.py   # Formateador para WhatsApp (modelo rápido)
+│   │       └── summarize.py       # Resumen automático de conversación
 │   └── api/
-│       ├── main.py                 # FastAPI app + lifespan
-│       ├── whatsapp.py             # Parser Kapso + envío de mensajes
-│       └── routes/webhook.py       # Endpoint /webhook
-├── scripts/seed_pinecone.py        # Carga fm_data.txt → Pinecone
-├── data/fm_data.txt                # Datos de FM.inc (planes, cobertura, FAQ)
-├── docker-compose.yml              # PostgreSQL + Adminer
+│       ├── main.py                # FastAPI app + lifespan + checkpointer
+│       ├── whatsapp.py            # Parser Kapso + envío de mensajes
+│       └── routes/webhook.py      # Endpoint /webhook
+├── scripts/seed_pinecone.py       # Carga fm_data.txt → Pinecone
+├── data/fm_data.txt               # Datos de FM.inc (planes, cobertura, FAQ)
+├── docker-compose.yml             # PostgreSQL + Adminer
 └── requirements.txt
 ```
 
@@ -123,9 +134,13 @@ support/
 - **StateGraph**: Grafo basado en estados donde cada nodo lee y escribe un estado compartido.
 - **MessagesState**: Los mensajes se *acumulan* automáticamente en vez de reemplazarse.
 - **Conditional Edges**: El nodo de triaje decide dinámicamente qué agente invocar.
-- **Tool Calling**: El agente de soporte usa el LLM para decidir qué herramienta SQL ejecutar.
+- **ToolNode + ReAct Loop**: El agente de soporte usa el patrón ReAct *en el grafo*: `support_agent → tools_condition → ToolNode → support_agent`.
+- **Phone Injection**: El `user_phone` se inyecta en código antes de ejecutar tools — nunca se confía en el LLM para datos sensibles.
 - **RAG**: El agente de información combina búsqueda semántica (Pinecone) con generación (LLM).
 - **Pinecone Inference**: Embeddings generados server-side con `llama-text-embed-v2` (1024 dims).
+- **Memoria**: `AsyncPostgresSaver` persiste conversaciones por `thread_id` (número de teléfono).
+- **Resumen Automático**: Cuando el historial supera 6 mensajes conversacionales, se resumen los viejos y se mantienen los 2 más recientes.
+- **LLM Compartido**: Tres instancias centralizadas en `llm.py` — `llm` (creativo), `llm_strict` (determinista), `llm_format` (rápido).
 
 ## 📄 Licencia
 

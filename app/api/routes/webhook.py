@@ -6,12 +6,10 @@ Endpoints:
 - POST /test: Endpoint de prueba sin WhatsApp
 
 Conceptos clave:
-- Kapso envía webhooks con formato propio (event + data).
-- A diferencia de Meta directo, NO necesitamos un GET de verificación
-  con challenge — Kapso maneja eso por su cuenta.
+- Kapso envía webhooks con formato propio (message + conversation).
 - BackgroundTasks permite responder 200 rápido mientras procesamos.
-
-Referencia: .agents/skills/integrate-whatsapp/SKILL.md → Receive events
+- thread_id (phone number) se pasa en config para que el checkpointer
+  persista la conversación por usuario.
 """
 
 import logging
@@ -22,7 +20,6 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
 from app.api.whatsapp import mark_as_read, parse_kapso_webhook, send_whatsapp_message
-from app.graph.graph import support_app
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +30,11 @@ router = APIRouter()
 #  POST /webhook — Eventos de Kapso
 # ═══════════════════════════════════════════════════════════════
 
-async def process_message(phone: str, text: str, message_id: str):
+async def process_message(support_app, phone: str, text: str, message_id: str):
     """
     Procesa un mensaje en background:
     1. Marca como leído (tildes azules + typing indicator)
-    2. Invoca el grafo LangGraph
+    2. Invoca el grafo LangGraph con thread_id para memoria
     3. Envía la respuesta por WhatsApp
     """
     logger.info(f"📱 Mensaje de {phone}: {text}")
@@ -47,14 +44,18 @@ async def process_message(phone: str, text: str, message_id: str):
         if message_id:
             await mark_as_read(message_id)
 
-        # Invocar el grafo con el mensaje del usuario
-        result = await support_app.ainvoke({
-            "messages": [HumanMessage(content=text)],
-            "user_phone": phone,
-            "intent": "",
-            "context": "",
-            "response": "",
-        })
+        # Invocar el grafo con memoria de conversación
+        # El thread_id (phone) permite recordar mensajes anteriores
+        result = await support_app.ainvoke(
+            {
+                "messages": [HumanMessage(content=text)],
+                "user_phone": phone,
+                "intent": "",
+                "context": "",
+                "response": "",
+            },
+            config={"configurable": {"thread_id": phone}},
+        )
 
         # Obtener la respuesta formateada
         response = result.get("response", "")
@@ -86,13 +87,17 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     payload = await request.json()
     logger.info(f"📥 Webhook recibido: {payload}")
 
-    # Parsear el mensaje entrante (soporta formato Kapso y Meta)
+    # Obtener el grafo compilado desde app.state
+    support_app = request.app.state.support_app
+
+    # Parsear el mensaje entrante
     message_data = parse_kapso_webhook(payload)
 
     if message_data:
         logger.info(f"✅ Mensaje parseado: phone={message_data['phone']}, text={message_data['text'][:50]}...")
         background_tasks.add_task(
             process_message,
+            support_app=support_app,
             phone=message_data["phone"],
             text=message_data["text"],
             message_id=message_data.get("message_id", ""),
@@ -115,7 +120,7 @@ class TestMessage(BaseModel):
 
 
 @router.post("/test")
-async def test_endpoint(msg: TestMessage):
+async def test_endpoint(request: Request, msg: TestMessage):
     """
     Endpoint de prueba que simula un mensaje de WhatsApp.
     Ideal para testing sin necesidad de configurar Kapso.
@@ -124,22 +129,23 @@ async def test_endpoint(msg: TestMessage):
         curl -X POST http://localhost:8000/test \\
             -H "Content-Type: application/json" \\
             -d '{"text": "¿Qué planes tienen?"}'
-
-    Ejemplo de soporte:
-        curl -X POST http://localhost:8000/test \\
-            -H "Content-Type: application/json" \\
-            -d '{"text": "No tengo señal, quiero reportar el problema"}'
     """
     logger.info(f"🧪 TEST: Simulando mensaje de {msg.phone}: {msg.text}")
 
+    # Obtener el grafo compilado desde app.state
+    support_app = request.app.state.support_app
+
     try:
-        result = await support_app.ainvoke({
-            "messages": [HumanMessage(content=msg.text)],
-            "user_phone": msg.phone,
-            "intent": "",
-            "context": "",
-            "response": "",
-        })
+        result = await support_app.ainvoke(
+            {
+                "messages": [HumanMessage(content=msg.text)],
+                "user_phone": msg.phone,
+                "intent": "",
+                "context": "",
+                "response": "",
+            },
+            config={"configurable": {"thread_id": msg.phone}},
+        )
 
         return {
             "intent": result.get("intent", ""),

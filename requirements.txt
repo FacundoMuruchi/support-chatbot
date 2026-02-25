@@ -1,10 +1,12 @@
 langgraph
+langgraph-checkpoint-postgres
 langchain
 langchain-text-splitters
 langchain-openai
 langchain-pinecone
 langsmith
 pinecone-client
+psycopg[binary,pool]
 fastapi
 uvicorn[standard]
 httpx

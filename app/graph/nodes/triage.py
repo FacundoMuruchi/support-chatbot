@@ -17,15 +17,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.llm import llm_strict as llm
 from app.graph.state import SupportState
-
-# ── LLM configurado para OpenRouter ─────────────────────────────
-llm = ChatOpenAI(
-    model=settings.openrouter_model,
-    openai_api_key=settings.openrouter_api_key,
-    openai_api_base=settings.openrouter_base_url,
-    temperature=0,  # Determinístico para clasificación
-)
 
 # ── Prompt del clasificador ─────────────────────────────────────
 TRIAGE_SYSTEM_PROMPT = """Eres un clasificador de intenciones para FM.inc, una empresa de telefonía móvil.

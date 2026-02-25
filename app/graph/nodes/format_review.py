@@ -15,15 +15,8 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.llm import llm_format as llm
 from app.graph.state import SupportState
-
-# ── LLM para formateo ───────────────────────────────────────────
-llm = ChatOpenAI(
-    model=settings.openrouter_model,
-    openai_api_key=settings.openrouter_api_key,
-    openai_api_base=settings.openrouter_base_url,
-    temperature=0.2,
-)
 
 FORMAT_SYSTEM_PROMPT = """Eres un formateador de mensajes para WhatsApp de FM.inc.
 
@@ -52,7 +45,14 @@ async def format_review_node(state: SupportState) -> dict:
 
     Retorna el response formateado y lo agrega a messages.
     """
+    # Obtener respuesta: primero de state["response"], si no del último AIMessage
     raw_response = state.get("response", "")
+    if not raw_response:
+        # Buscar el último AIMessage en el historial (patrón ToolNode)
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
+                raw_response = msg.content
+                break
 
     if not raw_response:
         formatted = "😅 Disculpá, no pude procesar tu mensaje. ¿Podrías intentar de nuevo?"

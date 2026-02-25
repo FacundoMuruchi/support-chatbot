@@ -2,15 +2,13 @@
 Aplicación FastAPI principal.
 
 Punto de entrada del servidor. Configura:
-- Lifespan (inicialización de DB al arrancar)
+- Lifespan (inicialización de DB y checkpointer al arrancar)
 - CORS middleware
 - Logging
 - Rutas del webhook
 
 Para ejecutar:
     uvicorn app.api.main:app --reload --port 8000
-
-Referencia: .agents/skills/fastapi-templates/SKILL.md
 """
 
 import logging
@@ -18,10 +16,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
 
 from app.api.routes.webhook import router as webhook_router
 from app.core.config import settings
 from app.db.database import init_db
+from app.graph.graph import build_graph
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -31,6 +32,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ── Estado global ────────────────────────────────────────────────
+# El grafo se construye en el lifespan cuando el checkpointer está listo
+support_app = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,11 +44,14 @@ async def lifespan(app: FastAPI):
 
     Startup:
     - Inicializa la base de datos (crea tablas si no existen)
-    - Valida configuración crítica
+    - Crea el checkpointer (PostgresSaver) para memoria de conversación
+    - Compila el grafo con el checkpointer
 
     Shutdown:
-    - Limpieza de recursos
+    - Cierra el pool de conexiones del checkpointer
     """
+    global support_app
+
     # ── Startup ──
     logger.info("🚀 Iniciando FM.inc Support System...")
 
@@ -55,13 +63,43 @@ async def lifespan(app: FastAPI):
     if not settings.pinecone_api_key:
         logger.warning("⚠️  PINECONE_API_KEY no configurada — RAG no funcionará")
 
+    # Inicializar DB (tablas de tickets)
     init_db()
+
+    # Inicializar checkpointer (tablas de memoria)
+    connection_string = settings.database_url
+
+    # Setup necesita autocommit (CREATE INDEX CONCURRENTLY no corre en transaction)
+    import psycopg
+    setup_conn = await psycopg.AsyncConnection.connect(connection_string, autocommit=True)
+    setup_checkpointer = AsyncPostgresSaver(setup_conn)
+    await setup_checkpointer.setup()
+    await setup_conn.close()
+
+    # Pool para el checkpointer de runtime
+    pool = AsyncConnectionPool(
+        conninfo=connection_string,
+        max_size=5,
+        open=False,
+    )
+    await pool.open()
+
+    checkpointer = AsyncPostgresSaver(pool)
+    logger.info("🧠 Checkpointer PostgreSQL inicializado (memoria de conversación activa)")
+
+    # Compilar grafo con checkpointer
+    support_app = build_graph(checkpointer=checkpointer)
+
+    # Hacer el grafo accesible desde las rutas
+    app.state.support_app = support_app
+
     logger.info("✅ Sistema listo para recibir mensajes")
 
     yield  # La app corre aquí
 
     # ── Shutdown ──
     logger.info("👋 Apagando FM.inc Support System...")
+    await pool.close()
 
 
 # ── App FastAPI ──────────────────────────────────────────────────
@@ -95,6 +133,7 @@ async def health_check():
         "service": "FM.inc Support System",
         "status": "running",
         "version": "1.0.0",
+        "memory": "PostgresSaver (conversation persistence)",
         "whatsapp_provider": "Kapso",
         "endpoints": {
             "webhook": "POST /webhook",

@@ -12,37 +12,32 @@ Conceptos clave para aprender:
 - Esto evita alucinaciones: el LLM solo responde con info real.
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.core.llm import llm
 from app.graph.state import SupportState
 from app.rag.vectorstore import get_retriever
-
-# ── LLM configurado para OpenRouter ─────────────────────────────
-llm = ChatOpenAI(
-    model=settings.openrouter_model,
-    openai_api_key=settings.openrouter_api_key,
-    openai_api_base=settings.openrouter_base_url,
-    temperature=0.3,  # Un poco de creatividad para respuestas naturales
-)
 
 # ── Prompt del agente RAG ────────────────────────────────────────
 RAG_SYSTEM_PROMPT = """Eres el asistente virtual de FM.inc, una empresa de telefonía móvil argentina.
 
 Tu rol es responder preguntas sobre planes, cobertura, beneficios, medios de pago
-y preguntas frecuentes usando ÚNICAMENTE la información proporcionada en el contexto.
+y preguntas frecuentes. También podés mantener una conversación natural con el usuario.
 
-CONTEXTO RECUPERADO:
+CONTEXTO RECUPERADO (datos de FM.inc):
 {context}
 
 REGLAS:
-1. Respondé SOLO con información del contexto. Si no aparece en el contexto, decí:
+1. Para preguntas sobre productos/servicios de FM.inc, usá la información del CONTEXTO.
+   Si no aparece en el contexto, decí:
    "No tengo información sobre eso. Te recomiendo contactar a nuestro equipo al 0800-555-FMINC."
-2. Sé amigable, conciso y profesional. Usá "vos" (español rioplatense).
-3. Si mencionás precios, siempre incluí el signo $ y la moneda (ARS). Ej: $12.990 ARS/mes.
-4. Si el usuario pregunta por varios planes, comparalos brevemente.
-5. No inventes información, descuentos ni promociones que no estén en el contexto.
+2. Para preguntas conversacionales (nombre, saludos, etc.), usá el historial de chat.
+3. Sé amigable, conciso y profesional. Usá "vos" (español rioplatense).
+4. Si mencionás precios, siempre incluí el signo $ y la moneda (ARS). Ej: $12.990 ARS/mes.
+5. Si el usuario pregunta por varios planes, comparalos brevemente.
+6. No inventes información, descuentos ni promociones que no estén en el contexto.
 """
 
 
@@ -59,7 +54,7 @@ async def info_agent_node(state: SupportState) -> dict:
 
     El context se guarda por si se necesita para debugging/logging.
     """
-    # 1. Obtener la query del usuario
+    # 1. Obtener la query del usuario (último mensaje para búsqueda)
     last_message = state["messages"][-1]
     query = last_message.content
 
@@ -71,11 +66,14 @@ async def info_agent_node(state: SupportState) -> dict:
     context = "\n\n---\n\n".join([doc.page_content for doc in docs])
     print(f"📚 Info Agent: {len(docs)} documentos recuperados de Pinecone")
 
-    # 4. Generar respuesta con el LLM
-    response = await llm.ainvoke([
-        SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context)),
-        HumanMessage(content=query),
-    ])
+    # 4. Generar respuesta con el LLM (con resumen si existe)
+    summary = state.get("summary", "")
+    messages = [SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))]
+    if summary:
+        messages.append(SystemMessage(content=f"Resumen de la conversación anterior: {summary}"))
+    messages.extend(state["messages"])
+
+    response = await llm.ainvoke(messages)
 
     print(f"📚 Info Agent: respuesta generada ({len(response.content)} chars)")
 

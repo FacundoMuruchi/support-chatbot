@@ -29,8 +29,13 @@ class SupportState(MessagesState):
         response: Respuesta para WhatsApp. Se llena en info_agent o
                   support_agent, y luego format_review la sobreescribe
                   con el formato final (emojis, negritas, etc.).
+
+        summary: Resumen de la conversación anterior. Se genera cuando
+                 el historial es largo y se inyecta como SystemMessage.
     """
     user_phone: str
     intent: str
     context: str
     response: str
+    summary: str
+

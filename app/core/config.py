@@ -25,11 +25,7 @@ class Settings:
     @property
     def openrouter_api_key(self) -> str:
         return os.environ.get("OPENROUTER_API_KEY", "")
-
-    @property
-    def openrouter_model(self) -> str:
-        return os.environ.get("OPENROUTER_MODEL", "")
-
+    
     @property
     def openrouter_base_url(self) -> str:
         return os.environ.get("OPENROUTER_BASE_URL", "")
