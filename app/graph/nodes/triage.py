@@ -13,11 +13,13 @@ Conceptos clave para aprender:
 - El resultado se usa en add_conditional_edges para enrutar.
 """
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+import logging
 
-from app.core.config import settings
-from app.core.llm import llm_strict as llm
+from langchain_core.messages import HumanMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
+
+from app.core.llm import invoke_with_retry, llm_strict as llm
 from app.graph.state import SupportState
 
 # ── Prompt del clasificador ─────────────────────────────────────
@@ -57,7 +59,7 @@ async def triage_node(state: SupportState) -> dict:
     last_message = state["messages"][-1]
 
     # Llamar al LLM para clasificar
-    response = await llm.ainvoke([
+    response = await invoke_with_retry(llm, [
         SystemMessage(content=TRIAGE_SYSTEM_PROMPT),
         HumanMessage(content=last_message.content),
     ])
@@ -69,7 +71,7 @@ async def triage_node(state: SupportState) -> dict:
     if intent not in ("info", "soporte"):
         intent = "info"  # fallback seguro
 
-    print(f"🔀 Triaje: intent clasificado como '{intent}'")
+    logger.info(f"🔀 Triaje: intent clasificado como '{intent}'")
 
     return {"intent": intent}
 

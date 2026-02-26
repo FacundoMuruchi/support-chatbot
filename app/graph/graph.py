@@ -19,8 +19,11 @@ Flujo visual:
           [END]
 """
 
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+import logging
+
 from langgraph.graph import START, END, StateGraph
+
+logger = logging.getLogger(__name__)
 from langgraph.prebuilt import tools_condition, ToolNode
 
 from app.graph.nodes.format_review import format_review_node
@@ -111,6 +114,6 @@ def build_graph(checkpointer=None):
     graph.add_edge("summarize_conversation", END)
 
     app = graph.compile(checkpointer=checkpointer)
-    print("✅ Grafo LangGraph compilado exitosamente")
+    logger.info("✅ Grafo LangGraph compilado exitosamente")
 
     return app

@@ -10,10 +10,10 @@ Conceptos clave:
 - El loop ReAct (LLM → tool → LLM) está en el grafo, no acá.
 """
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 
-from app.core.llm import llm_strict as llm
+from app.core.llm import invoke_with_retry, llm_strict as llm
 from app.db.database import SessionLocal
 from app.db.models import Ticket, TicketCategory, TicketStatus
 from app.graph.state import SupportState
@@ -84,6 +84,9 @@ def create_ticket(phone_number: str, description: str, category: str) -> str:
             f"Estado: {ticket.status.value}\n"
             f"Descripción: {ticket.description}"
         )
+    except Exception as e:
+        session.rollback()
+        return f"❌ Error creando ticket: {e}"
     finally:
         session.close()
 
@@ -172,6 +175,6 @@ async def support_agent_node(state: SupportState) -> dict:
         messages.append(SystemMessage(content=f"Resumen de la conversación anterior: {summary}"))
     messages.extend(state["messages"])
 
-    response = await llm_with_tools.ainvoke(messages)
+    response = await invoke_with_retry(llm_with_tools, messages)
 
     return {"messages": [response]}

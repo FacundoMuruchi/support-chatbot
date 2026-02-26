@@ -13,3 +13,6 @@ httpx
 sqlalchemy
 psycopg2-binary
 python-dotenv
+tenacity
+pytest
+pytest-asyncio

@@ -12,11 +12,13 @@ Conceptos clave para aprender:
 - Esto evita alucinaciones: el LLM solo responde con info real.
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
-from langchain_openai import ChatOpenAI
+import logging
 
-from app.core.config import settings
-from app.core.llm import llm
+from langchain_core.messages import AIMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
+
+from app.core.llm import invoke_with_retry, llm
 from app.graph.state import SupportState
 from app.rag.vectorstore import get_retriever
 
@@ -64,7 +66,7 @@ async def info_agent_node(state: SupportState) -> dict:
 
     # 3. Formatear el contexto
     context = "\n\n---\n\n".join([doc.page_content for doc in docs])
-    print(f"📚 Info Agent: {len(docs)} documentos recuperados de Pinecone")
+    logger.info(f"📚 Info Agent: {len(docs)} documentos recuperados de Pinecone")
 
     # 4. Generar respuesta con el LLM (con resumen si existe)
     summary = state.get("summary", "")
@@ -73,9 +75,9 @@ async def info_agent_node(state: SupportState) -> dict:
         messages.append(SystemMessage(content=f"Resumen de la conversación anterior: {summary}"))
     messages.extend(state["messages"])
 
-    response = await llm.ainvoke(messages)
+    response = await invoke_with_retry(llm, messages)
 
-    print(f"📚 Info Agent: respuesta generada ({len(response.content)} chars)")
+    logger.info(f"📚 Info Agent: respuesta generada ({len(response.content)} chars)")
 
     # 5. Retornar — esto se mergea con el state
     return {

@@ -15,7 +15,10 @@ Conceptos clave:
 - Kapso agrega features extra (query history, buffering, etc.)
 """
 
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import httpx
 
@@ -79,13 +82,13 @@ async def send_whatsapp_message(phone: str, message: str) -> bool:
         try:
             response = await client.post(url, json=data, headers=headers)
             if response.status_code == 200:
-                print(f"📤 Mensaje enviado a {phone} ({len(message)} chars)")
+                logger.info(f"📤 Mensaje enviado a {phone} ({len(message)} chars)")
                 return True
             else:
-                print(f"❌ Error enviando mensaje: {response.status_code} - {response.text}")
+                logger.error(f"❌ Error enviando mensaje: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
-            print(f"❌ Error de conexión con Kapso API: {e}")
+            logger.error(f"❌ Error de conexión con Kapso API: {e}")
             return False
 
 

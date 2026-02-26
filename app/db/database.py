@@ -5,7 +5,11 @@ Usa SQLAlchemy síncrono con psycopg2 para simplicidad.
 La conexión se establece al iniciar FastAPI y se cierra al apagar.
 """
 
+import logging
+
 from sqlalchemy import create_engine
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -42,4 +46,4 @@ def init_db() -> None:
     from app.db.models import Base  # noqa: F811
 
     Base.metadata.create_all(bind=engine)
-    print("✅ Base de datos inicializada correctamente")
+    logger.info("✅ Base de datos inicializada correctamente")

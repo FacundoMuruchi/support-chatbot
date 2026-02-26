@@ -103,7 +103,7 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             message_id=message_data.get("message_id", ""),
         )
     else:
-        logger.warning(f"⚠️ Webhook recibido pero no se pudo parsear como mensaje de texto")
+        logger.warning("⚠️ Webhook recibido pero no se pudo parsear como mensaje de texto")
 
     # Kapso espera 200 OK
     return Response(content="OK", status_code=200)

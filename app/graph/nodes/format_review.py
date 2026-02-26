@@ -11,12 +11,16 @@ Conceptos clave para aprender:
   (no soporta markdown completo, tiene límite de caracteres, etc.)
 """
 
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+import logging
 
-from app.core.config import settings
-from app.core.llm import llm_format as llm
+from langchain_core.messages import AIMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
+
+from app.core.llm import invoke_with_retry, llm_format as llm
 from app.graph.state import SupportState
+
+MAX_WHATSAPP_CHARS = 1000
 
 FORMAT_SYSTEM_PROMPT = """Eres un formateador de mensajes para WhatsApp de FM.inc.
 
@@ -57,18 +61,21 @@ async def format_review_node(state: SupportState) -> dict:
     if not raw_response:
         formatted = "😅 Disculpá, no pude procesar tu mensaje. ¿Podrías intentar de nuevo?"
     else:
-        # Formatear con LLM
-        result = await llm.ainvoke([
-            SystemMessage(content=FORMAT_SYSTEM_PROMPT),
-            SystemMessage(content=f"RESPUESTA ORIGINAL:\n{raw_response}"),
-        ])
-        formatted = result.content.strip()
+        try:
+            result = await invoke_with_retry(llm, [
+                SystemMessage(content=FORMAT_SYSTEM_PROMPT),
+                SystemMessage(content=f"RESPUESTA ORIGINAL:\n{raw_response}"),
+            ])
+            formatted = result.content.strip()
+        except Exception as e:
+            logger.error(f"❌ Error formateando respuesta: {e}")
+            formatted = raw_response  # Fallback: enviar sin formatear
 
     # Asegurar límite de caracteres
-    if len(formatted) > 1500:
-        formatted = formatted[:1497] + "..."
+    if len(formatted) > MAX_WHATSAPP_CHARS:
+        formatted = formatted[:MAX_WHATSAPP_CHARS - 3] + "..."
 
-    print(f"📝 Format Review: respuesta formateada ({len(formatted)} chars)")
+    logger.info(f"📝 Format Review: respuesta formateada ({len(formatted)} chars)")
 
     return {
         "response": formatted,

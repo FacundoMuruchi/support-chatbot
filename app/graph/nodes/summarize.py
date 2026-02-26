@@ -12,7 +12,7 @@ importante se preserva en el resumen.
 
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 
-from app.core.llm import llm_format as llm
+from app.core.llm import invoke_with_retry, llm_format as llm
 from app.graph.state import SupportState
 
 # Cantidad de mensajes conversacionales antes de activar el resumen
@@ -68,7 +68,7 @@ async def summarize_conversation(state: SupportState) -> dict:
         )
 
     messages = conversation_msgs + [HumanMessage(content=summary_prompt)]
-    response = await llm.ainvoke(messages)
+    response = await invoke_with_retry(llm, messages)
 
     # Borrar TODOS los mensajes viejos (incluyendo tool calls), dejar los 2 últimos
     delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]

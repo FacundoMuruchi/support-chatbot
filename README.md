@@ -4,31 +4,33 @@ Sistema multi-agente de soporte técnico para una empresa de telefonía móvil, 
 
 ## 🏗️ Arquitectura
 
-```
-WhatsApp → Kapso Webhook → FastAPI → LangGraph StateGraph
-                                          │
-                                    ┌─────┴─────┐
-                                    │   Triaje   │  (Router LLM)
-                                    └─────┬─────┘
-                                 ┌────────┴────────┐
-                            info │                 │ soporte
-                                 ▼                 ▼
-                          ┌──────────────┐  ┌──────────────┐
-                          │ Agente Info  │  │Agente Soporte│←──┐
-                          │   (RAG)      │  │  (ToolNode)  │   │
-                          └──────┬───────┘  └──────┬───────┘   │
-                                 │          tools_condition    │
-                                 │            ↓          ↓     │
-                                 │         [tools] ──────┘   (no)
-                                 └────────┬────────────────────┘
-                                    ┌─────┴─────┐
-                                    │  Formato   │  (WhatsApp-ready)
-                                    └─────┬─────┘
-                                   should_summarize?
-                                    ↓            ↓
-                              summarize        [END]
-                                    ↓
-                                  [END]
+```mermaid
+graph TD
+    WA["📱 WhatsApp"] -->|webhook| K["Kapso"]
+    K -->|POST /webhook| API["FastAPI"]
+    API -->|BackgroundTask| G["LangGraph StateGraph"]
+
+    G --> T["🔀 Triage"]
+    T -->|"intent: info"| IA["📚 Info Agent<br/>(RAG + Pinecone)"]
+    T -->|"intent: soporte"| SA["🔧 Support Agent"]
+
+    SA -->|tool_calls?| TC{"tools_condition"}
+    TC -->|sí| TOOLS["⚙️ ToolNode<br/>(inject phone)"]
+    TOOLS -->|resultado| SA
+    TC -->|no| FR["📝 Format Review"]
+
+    IA --> FR
+    FR -->|respuesta| SUM{"should_summarize?"}
+    SUM -->|">6 msgs"| SC["🧠 Summarize"]
+    SUM -->|"≤6 msgs"| REPLY["📱 WhatsApp Reply"]
+    SC --> REPLY
+
+    style T fill:#f59e0b,color:#000
+    style IA fill:#3b82f6,color:#fff
+    style SA fill:#8b5cf6,color:#fff
+    style TOOLS fill:#6366f1,color:#fff
+    style FR fill:#10b981,color:#fff
+    style SC fill:#ec4899,color:#fff
 ```
 
 ## 🚀 Stack Tecnológico
@@ -105,7 +107,7 @@ support/
 ├── app/
 │   ├── core/
 │   │   ├── config.py              # Configuración centralizada
-│   │   └── llm.py                 # Instancias LLM compartidas (llm, llm_strict, llm_format)
+│   │   └── llm.py                 # LLM compartido + retry con backoff
 │   ├── db/
 │   │   ├── database.py            # SQLAlchemy engine/session (TZ: Buenos Aires)
 │   │   └── models.py              # Modelo Ticket (status, category enums)
@@ -123,9 +125,15 @@ support/
 │       ├── main.py                # FastAPI app + lifespan + checkpointer
 │       ├── whatsapp.py            # Parser Kapso + envío de mensajes
 │       └── routes/webhook.py      # Endpoint /webhook
+├── tests/
+│   ├── test_webhook.py            # Parsing de payloads Kapso
+│   ├── test_tools.py              # CRUD de tickets (SQLite en memoria)
+│   ├── test_format_review.py      # Límite de caracteres WhatsApp
+│   └── test_triage.py             # Routing de intents
 ├── scripts/seed_pinecone.py       # Carga fm_data.txt → Pinecone
 ├── data/fm_data.txt               # Datos de FM.inc (planes, cobertura, FAQ)
 ├── docker-compose.yml             # PostgreSQL + Adminer
+├── pytest.ini                     # Configuración de pytest
 └── requirements.txt
 ```
 
@@ -140,7 +148,21 @@ support/
 - **Pinecone Inference**: Embeddings generados server-side con `llama-text-embed-v2` (1024 dims).
 - **Memoria**: `AsyncPostgresSaver` persiste conversaciones por `thread_id` (número de teléfono).
 - **Resumen Automático**: Cuando el historial supera 6 mensajes conversacionales, se resumen los viejos y se mantienen los 2 más recientes.
+- **Retry con Backoff**: `invoke_with_retry` maneja rate limits (429) con backoff exponencial (3 intentos).
 - **LLM Compartido**: Tres instancias centralizadas en `llm.py` — `llm` (creativo), `llm_strict` (determinista), `llm_format` (rápido).
+
+## 🧪 Tests
+
+```bash
+pytest tests/ -v
+```
+
+15 tests que verifican:
+- Parsing de webhooks Kapso (text, imagen, vacío)
+- CRUD de tickets con SQLite en memoria
+- Enums de estado y categoría
+- Límite de caracteres de WhatsApp
+- Routing de intents
 
 ## 📄 Licencia
 
