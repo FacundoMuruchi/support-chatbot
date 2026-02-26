@@ -6,7 +6,7 @@ Sistema multi-agente de soporte técnico para una empresa de telefonía móvil, 
 
 ```mermaid
 graph TD
-    WA["📱 WhatsApp"] -->|webhook| K["Kapso"]
+    WA["📱 WhatsApp"] --> K["Kapso"]
     K -->|POST /webhook| API["FastAPI"]
     API -->|BackgroundTask| G["LangGraph StateGraph"]
 
