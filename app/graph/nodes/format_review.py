@@ -32,9 +32,8 @@ REGLAS DE FORMATO:
 3. No uses markdown (no **, no ##, no ```). WhatsApp usa *negrita* y _cursiva_.
 4. Usa saltos de línea para separar secciones.
 5. Si hay una lista, usa emojis como bullets (• o ▸).
-6. Termina con un mensaje amigable como "¿Te puedo ayudar en algo más? 😊"
-7. Mantén un tono profesional pero cercano.
-8. Si la respuesta original es corta, no la alargues innecesariamente.
+6. Mantén un tono profesional pero cercano.
+7. Si la respuesta original es corta, no la alargues innecesariamente.
 
 IMPORTANTE: Devolvé SOLO el mensaje formateado, sin explicaciones.
 """

@@ -21,29 +21,26 @@ from app.graph.state import SupportState
 # ── Prompt del agente de soporte ─────────────────────────────────
 SUPPORT_SYSTEM_PROMPT = """Eres el agente de soporte técnico de FM.inc, una empresa de telefonía móvil.
 
-FLUJO OBLIGATORIO PARA CREAR TICKETS:
-1. El usuario dice que tiene un problema → VOS PREGUNTÁS: "¿Podrías contarme más sobre el problema?"
-2. El usuario describe el problema con detalle → RECIÉN AHÍ usás create_ticket
-3. NUNCA llames a create_ticket si el usuario solo dijo "quiero reportar un problema" o similar sin dar detalles.
+REGLAS ESTRICTAS PARA TICKETS:
+1. NUNCA crees un ticket en el primer mensaje, incluso si parece tener cierta información.
+2. Si el usuario dice que tiene un problema o quiere reportar una avería, PRIMERO PREGUNTALE los detalles (qué pasa exactamente, desde cuándo). Sólo después de que responda con la descripción del problema, usás `create_ticket` pasandole la descripción del problema y la categoría.
+3. Si YA CREASTE un ticket en esta misma conversación y el usuario te da más información, DEBES usar `update_ticket`. NO crees uno nuevo bajo ninguna circunstancia.
 
-Ejemplo CORRECTO:
-- Usuario: "quiero reportar un averío"
-- Vos: "¡Claro! ¿Podrías contarme qué problema estás teniendo? Por ejemplo: ¿es de señal, internet, facturación?"
-- Usuario: "no tengo internet hace 2 días"
-- Vos: [create_ticket con descripción "Sin servicio de internet desde hace 2 días"]
+EJEMPLO CORRECTO:
+Usuario: "quiero reportar un averío"
+Tú: "¡Claro! ¿Podrías contarme qué problema estás teniendo? Por ejemplo: ¿es de señal, internet, facturación?"
+Usuario: "no tengo señal hace 2 días"
+Tú: [Usás create_ticket] "¡Listo, acabo de abrir el ticket para que lo revisen! ✅ ¿Este problema te ocurre en una zona en particular o en todos lados?"
+Usuario: "solo en el centro"
+Tú: [Usás update_ticket agregando la zona] "Perfecto, ya sumé ese dato al reporte. ¿Te puedo ayudar con algo más?"
 
-Ejemplo INCORRECTO (NUNCA hagas esto):
-- Usuario: "quiero reportar un averío"
-- Vos: [create_ticket] ← ERROR: no sabés cuál es el problema todavía
+4. Nunca pidas el número de teléfono, ya lo tenés.
 
 HERRAMIENTAS:
-1. create_ticket: Crea ticket. Categorías: señal, internet, facturacion, equipo, otro
-2. get_ticket_status: Estado de un ticket por ID
-3. list_user_tickets: Lista tickets del usuario
-
-OTRAS REGLAS:
-- Usá el número de "[Número del usuario: ...]" para las tools. NUNCA pidas el número.
-- Sé empático y profesional.
+1. create_ticket: Crea ticket inicial. Categorías: señal, internet, facturacion, equipo, otro
+2. update_ticket: Agrega detalles extras a un ticket que YA fue creado.
+3. get_ticket_status: Estado de un ticket por ID
+4. list_user_tickets: Lista tickets del usuario
 """
 
 
@@ -153,8 +150,37 @@ def list_user_tickets(phone_number: str) -> str:
         session.close()
 
 
+@tool
+def update_ticket(ticket_id: int, add_notes: str) -> str:
+    """
+    Agrega notas o detalles adicionales a un ticket existente.
+    Usá esta herramienta IMPERATIVAMENTE si el usuario da más contexto 
+    sobre un problema por el que YA abriste un ticket recientemente.
+
+    Args:
+        ticket_id: Número de ticket a actualizar
+        add_notes: Nuevos detalles a agregar a la descripción existente
+    """
+    session = SessionLocal()
+    try:
+        ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+
+        if not ticket:
+            return f"❌ No se encontró ningún ticket con ID #{ticket_id}."
+
+        ticket.description = f"{ticket.description}\n[UPDATE]: {add_notes}"
+        session.commit()
+
+        return f"✅ Ticket #{ticket_id} actualizado con la nueva información."
+    except Exception as e:
+        session.rollback()
+        return f"❌ Error actualizando ticket: {e}"
+    finally:
+        session.close()
+
+
 # ── Exports para graph.py ────────────────────────────────────────
-tools = [create_ticket, get_ticket_status, list_user_tickets]
+tools = [create_ticket, get_ticket_status, list_user_tickets, update_ticket]
 llm_with_tools = llm.bind_tools(tools)
 
 

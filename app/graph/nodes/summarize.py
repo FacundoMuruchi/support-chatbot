@@ -58,13 +58,12 @@ async def summarize_conversation(state: SupportState) -> dict:
 
     if summary:
         summary_prompt = (
-            f"Este es el resumen de la conversación hasta ahora: {summary}\n\n"
-            "Reescribe el resumen breve y conciso teniendo en cuenta los mensajes nuevos de arriba. "
+            f"Este es el resumen sobre el usuario hasta ahora: {summary}\n\n"
+            "Reescribe el resumen de forma breve y concisa teniendo en cuenta los mensajes nuevos de arriba."
         )
     else:
         summary_prompt = (
-            "Creá un resumen breve y conciso de la conversación de arriba. "
-            "Incluí datos importantes como el nombre del usuario, temas tratados, y tickets mencionados."
+            "Creá un resumen breve y conciso acerca del usuario usando la conversación de arriba."
         )
 
     messages = conversation_msgs + [HumanMessage(content=summary_prompt)]

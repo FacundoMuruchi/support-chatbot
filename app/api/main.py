@@ -15,7 +15,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 
@@ -32,10 +31,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Estado global ────────────────────────────────────────────────
-# El grafo se construye en el lifespan cuando el checkpointer está listo
-support_app = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,7 +45,6 @@ async def lifespan(app: FastAPI):
     Shutdown:
     - Cierra el pool de conexiones del checkpointer
     """
-    global support_app
 
     # ── Startup ──
     logger.info("🚀 Iniciando FM.inc Support System...")
@@ -87,11 +81,8 @@ async def lifespan(app: FastAPI):
     checkpointer = AsyncPostgresSaver(pool)
     logger.info("🧠 Checkpointer PostgreSQL inicializado (memoria de conversación activa)")
 
-    # Compilar grafo con checkpointer
-    support_app = build_graph(checkpointer=checkpointer)
-
-    # Hacer el grafo accesible desde las rutas
-    app.state.support_app = support_app
+    # Compilar grafo con checkpointer y hacerlo accesible desde las rutas
+    app.state.support_app = build_graph(checkpointer=checkpointer)
 
     logger.info("✅ Sistema listo para recibir mensajes")
 
@@ -111,15 +102,6 @@ app = FastAPI(
     ),
     version="1.0.0",
     lifespan=lifespan,
-)
-
-# ── CORS ─────────────────────────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # ── Rutas ────────────────────────────────────────────────────────

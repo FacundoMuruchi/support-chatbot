@@ -41,13 +41,13 @@ def _create_llm(model: str, temperature: float) -> ChatOpenAI:
 # ── Instancias ──
 llm = _create_llm("arcee-ai/trinity-large-preview:free", temperature=0.3)
 llm_strict = _create_llm("arcee-ai/trinity-large-preview:free", temperature=0)
-llm_format = _create_llm("nvidia/nemotron-3-nano-30b-a3b:free", temperature=0)
+llm_format = _create_llm("nvidia/nemotron-3-nano-30b-a3b:free", temperature=0.5)
 
 
 # ── Retry wrapper ──
 @retry(
     retry=retry_if_exception_type(Exception),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    wait=wait_exponential(multiplier=1, min=2, max=20),
     stop=stop_after_attempt(3),
     before_sleep=lambda retry_state: logger.warning(
         f"⏳ LLM rate limited, reintentando en {retry_state.next_action.sleep:.0f}s... "

@@ -25,24 +25,18 @@ from app.graph.state import SupportState
 # ── Prompt del clasificador ─────────────────────────────────────
 TRIAGE_SYSTEM_PROMPT = """Eres un clasificador de intenciones para FM.inc, una empresa de telefonía móvil.
 
-Tu ÚNICA tarea es clasificar el mensaje del usuario en UNA de estas dos categorías:
+Tu ÚNICA tarea es analizar la conversación y clasificar la intención del ÚLTIMO mensaje del usuario en UNA de estas dos categorías:
 
-1. "info" — El usuario pregunta sobre:
-   - Planes de telefonía (precios, datos, beneficios)
-   - Cobertura y zonas de servicio
-   - Beneficios y promociones
-   - Información general de la empresa
+1. "info" — El usuario está pidiendo información general sobre precios, planes de telefonía, cobertura comercial, beneficios o promociones.
 
-2. "soporte" — El usuario quiere:
-   - Reportar un problema técnico o avería
-   - Consultar el estado de un ticket existente
-   - Ver sus tickets anteriores
-   - Reportar fallas de señal, internet, facturación, equipo
+2. "soporte" — El usuario está reportando un problema técnico, o quiere consultar, ver o gestionar sus tickets de soporte, o está en medio de una conversación técnica respondiendo a preguntas del agente.
 
-REGLAS:
+REGLAS VITALES Y ESTRICTAS:
+- Si el usuario menciona la palabra "ticket", "tickets" o "estado", la intención es SIEMPRE "soporte". NUNCA "info".
+- Si el usuario dice "quiero ver mis tickets", "mis tickets", "estado de mi ticket" la intención es SIEMPRE "soporte".
+- Si el contexto de la conversación previa demuestra que el usuario está reportando o detallando una falla técnica actualmente en curso, SIEMPRE clasifica su último mensaje como "soporte", por más corto o ambiguo que parezca en aislamiento.
 - Responde ÚNICAMENTE con la palabra "info" o "soporte" (sin comillas, sin explicación).
-- Si no estás seguro, clasifica como "info".
-- No generes ningún otro texto.
+- Si es la primera interacción y es un saludo genérico ("hola"), clasifica como "info".
 """
 
 
@@ -55,14 +49,13 @@ async def triage_node(state: SupportState) -> dict:
 
     Este retorno se MERGEA con el state existente (no lo reemplaza).
     """
-    # Obtener el último mensaje del usuario
-    last_message = state["messages"][-1]
+    # Obtener los últimos mensajes para darle contexto al router (soporta hasta 2)
+    recent_messages = state["messages"][-2:]
 
-    # Llamar al LLM para clasificar
-    response = await invoke_with_retry(llm, [
-        SystemMessage(content=TRIAGE_SYSTEM_PROMPT),
-        HumanMessage(content=last_message.content),
-    ])
+    # Llamar al LLM para clasificar pasando la historia reciente
+    messages = [SystemMessage(content=TRIAGE_SYSTEM_PROMPT)] + recent_messages
+    
+    response = await invoke_with_retry(llm, messages)
 
     # Limpiar la respuesta (por si el LLM agrega espacios o saltos de línea)
     intent = response.content.strip().lower()

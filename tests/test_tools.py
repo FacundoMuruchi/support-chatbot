@@ -66,7 +66,7 @@ def test_query_tickets_by_phone(db_session):
 
     # Buscar solo los del primer usuario
     tickets = db_session.query(Ticket).filter(
-        Ticket.phone_number == "541125037150"
+        Ticket.phone_number == "541125037151"
     ).all()
 
     assert len(tickets) == 2
@@ -100,7 +100,7 @@ def test_ticket_category_fallback():
 def test_ticket_repr(db_session):
     """Verifica el __repr__ del modelo."""
     ticket = Ticket(
-        phone_number="541125037150",
+        phone_number="541125037151",
         description="Test",
         category=TicketCategory.SEÑAL,
         status=TicketStatus.ABIERTO,
