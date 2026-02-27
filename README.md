@@ -38,8 +38,7 @@ graph TD
 | Componente | Tecnología |
 |---|---|
 | Orquestación | LangGraph (StateGraph) |
-| LLM Principal | OpenRouter → Arcee AI Trinity Large Preview 400B |
-| LLM Rápido | OpenRouter → NVIDIA Nemotron 3 Nano 30B (formato + resumen) |
+| LLM | OpenRouter → OpenAI GPT-OSS:120B |
 | Vector DB | Pinecone Serverless |
 | Embeddings | Pinecone Inference (`llama-text-embed-v2`, 1024 dims) |
 | DB Relacional | PostgreSQL (Docker) |
@@ -47,6 +46,7 @@ graph TD
 | API | FastAPI + Uvicorn |
 | WhatsApp | Kapso (proxy de WhatsApp Cloud API) |
 | Observabilidad | LangSmith |
+| Desarrollo asistido | Google Antigravity |
 
 ## 📋 Setup
 
@@ -149,7 +149,6 @@ support/
 - **Memoria**: `AsyncPostgresSaver` persiste conversaciones por `thread_id` (número de teléfono).
 - **Resumen Automático**: Cuando el historial supera 6 mensajes conversacionales, se resumen los viejos y se mantienen los 2 más recientes.
 - **Retry con Backoff**: `invoke_with_retry` maneja rate limits (429) con backoff exponencial (3 intentos).
-- **LLM Compartido**: Tres instancias centralizadas en `llm.py` — `llm` (creativo), `llm_strict` (determinista), `llm_format` (rápido).
 
 ## 🧪 Tests
 
@@ -163,7 +162,3 @@ pytest tests/ -v
 - Enums de estado y categoría
 - Límite de caracteres de WhatsApp
 - Routing de intents
-
-## 📄 Licencia
-
-MIT
