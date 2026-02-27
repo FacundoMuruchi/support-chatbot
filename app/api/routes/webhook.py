@@ -50,9 +50,6 @@ async def process_message(support_app, phone: str, text: str, message_id: str):
             {
                 "messages": [HumanMessage(content=text)],
                 "user_phone": phone,
-                "intent": "",
-                "context": "",
-                "response": "",
             },
             config={"configurable": {"thread_id": phone}},
         )
@@ -97,10 +94,10 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
         logger.info(f"✅ Mensaje parseado: phone={message_data['phone']}, text={message_data['text'][:50]}...")
         background_tasks.add_task(
             process_message,
-            support_app=support_app,
+            support_app,
             phone=message_data["phone"],
             text=message_data["text"],
-            message_id=message_data.get("message_id", ""),
+            message_id=message_data.get("message_id", "")
         )
     else:
         logger.warning("⚠️ Webhook recibido pero no se pudo parsear como mensaje de texto")
@@ -140,9 +137,6 @@ async def test_endpoint(request: Request, msg: TestMessage):
             {
                 "messages": [HumanMessage(content=msg.text)],
                 "user_phone": msg.phone,
-                "intent": "",
-                "context": "",
-                "response": "",
             },
             config={"configurable": {"thread_id": msg.phone}},
         )

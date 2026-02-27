@@ -1,22 +1,5 @@
 """
 Ensamblado del StateGraph de LangGraph.
-
-Flujo visual:
-    [START] → triage → (info? soporte?)
-                ↓ info              ↓ soporte
-           info_agent          support_agent ←──┐
-                ↓                   ↓            │
-                ↓              tools_condition   │
-                ↓                ↓          ↓    │
-                ↓             [tools] ──────┘  (no tools)
-                ↓                               ↓
-            format_review ← ───────────────────┘
-                ↓
-          should_summarize?
-            ↓            ↓
-     summarize_conv    [END]
-            ↓
-          [END]
 """
 
 import logging
@@ -32,22 +15,6 @@ from app.graph.nodes.summarize import should_summarize, summarize_conversation
 from app.graph.nodes.support_agent import support_agent_node, tools
 from app.graph.nodes.triage import route_by_intent, triage_node
 from app.graph.state import SupportState
-
-
-def _inject_phone(state: SupportState) -> dict:
-    """
-    ToolNode wrapper: inyecta user_phone y valida descripción antes de crear tickets.
-    """
-    user_phone = state.get("user_phone", "desconocido")
-    last_msg = state["messages"][-1]
-
-    for tc in last_msg.tool_calls:
-        if tc["name"] in ("create_ticket", "list_user_tickets"):
-            tc["args"]["phone_number"] = user_phone
-
-    tool_node = ToolNode(tools)
-    return tool_node.invoke(state)
-
 
 def _route_support(state: SupportState) -> str:
     """
@@ -71,7 +38,7 @@ def build_graph(checkpointer=None):
     graph.add_node("triage", triage_node)
     graph.add_node("info_agent", info_agent_node)
     graph.add_node("support_agent", support_agent_node)
-    graph.add_node("support_tools", _inject_phone)
+    graph.add_node("support_tools", ToolNode(tools))
     graph.add_node("format_review", format_review_node)
     graph.add_node("summarize_conversation", summarize_conversation)
 

@@ -15,7 +15,7 @@ graph TD
     T -->|"intent: soporte"| SA["🔧 Support Agent"]
 
     SA -->|tool_calls?| TC{"tools_condition"}
-    TC -->|sí| TOOLS["⚙️ ToolNode<br/>(inject phone)"]
+    TC -->|sí| TOOLS["⚙️ ToolNode"]
     TOOLS -->|resultado| SA
     TC -->|no| FR["📝 Format Review"]
 
@@ -38,14 +38,15 @@ graph TD
 | Componente | Tecnología |
 |---|---|
 | Orquestación | LangGraph (StateGraph) |
-| LLM | OpenRouter → OpenAI GPT-OSS:120B |
+| LLM | OpenRouter → OpenAI GPT-OSS 120B |
 | Vector DB | Pinecone Serverless |
 | Embeddings | Pinecone Inference (`llama-text-embed-v2`, 1024 dims) |
 | DB Relacional | PostgreSQL (Docker) |
-| Memoria | LangGraph PostgresSaver (checkpointer por thread_id) |
+| Memoria | LangGraph AsyncPostgresSaver (checkpointer por thread_id) |
 | API | FastAPI + Uvicorn |
 | WhatsApp | Kapso (proxy de WhatsApp Cloud API) |
-| Observabilidad | LangSmith |
+| Automatización | n8n |
+| Observabilidad | LangSmith + Adminer |
 | Desarrollo asistido | Google Antigravity |
 
 ## 📋 Setup
@@ -53,8 +54,8 @@ graph TD
 ### 1. Clonar y configurar entorno
 
 ```bash
-git clone https://github.com/tu-usuario/fm-support.git
-cd fm-support
+git clone https://github.com/FacundoMuruchi/support-chatbot.git
+cd support-chatbot
 python -m venv .venv
 .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
@@ -107,7 +108,7 @@ support/
 ├── app/
 │   ├── core/
 │   │   ├── config.py              # Configuración centralizada
-│   │   └── llm.py                 # LLM compartido + retry con backoff
+│   │   └── llm.py                 # LLM compartido + TONO_NEGOCIO + retry con backoff
 │   ├── db/
 │   │   ├── database.py            # SQLAlchemy engine/session (TZ: Buenos Aires)
 │   │   └── models.py              # Modelo Ticket (status, category enums)
@@ -118,8 +119,8 @@ support/
 │   │   └── nodes/
 │   │       ├── triage.py          # Router LLM (info | soporte)
 │   │       ├── info_agent.py      # Agente RAG (Pinecone + historial + summary)
-│   │       ├── support_agent.py   # Agente con ToolNode (tickets DB)
-│   │       ├── format_review.py   # Formateador para WhatsApp (modelo rápido)
+│   │       ├── support_agent.py   # Agente con ToolNode + InjectedState (tickets DB)
+│   │       ├── format_review.py   # Formateador WhatsApp (Python puro, sin LLM)
 │   │       └── summarize.py       # Resumen automático de conversación
 │   └── api/
 │       ├── main.py                # FastAPI app + lifespan + checkpointer
@@ -128,9 +129,9 @@ support/
 ├── tests/
 │   ├── test_webhook.py            # Parsing de payloads Kapso
 │   ├── test_tools.py              # CRUD de tickets (SQLite en memoria)
-│   ├── test_format_review.py      # Límite de caracteres WhatsApp
+│   ├── test_format_review.py      # Límite de caracteres y limpieza de markdown
 │   └── test_triage.py             # Routing de intents
-├── scripts/seed_pinecone.py       # Carga fm_data.txt → Pinecone
+├── scripts/seed_pinecone.py       # Carga fm_data.txt → Pinecone (1 chunk por sección)
 ├── data/fm_data.txt               # Datos de FM.inc (planes, cobertura, FAQ)
 ├── docker-compose.yml             # PostgreSQL + Adminer
 ├── pytest.ini                     # Configuración de pytest
@@ -143,12 +144,15 @@ support/
 - **MessagesState**: Los mensajes se *acumulan* automáticamente en vez de reemplazarse.
 - **Conditional Edges**: El nodo de triaje decide dinámicamente qué agente invocar.
 - **ToolNode + ReAct Loop**: El agente de soporte usa el patrón ReAct *en el grafo*: `support_agent → tools_condition → ToolNode → support_agent`.
-- **Phone Injection**: El `user_phone` se inyecta en código antes de ejecutar tools — nunca se confía en el LLM para datos sensibles.
-- **RAG**: El agente de información combina búsqueda semántica (Pinecone) con generación (LLM).
-- **Pinecone Inference**: Embeddings generados server-side con `llama-text-embed-v2` (1024 dims).
-- **Memoria**: `AsyncPostgresSaver` persiste conversaciones por `thread_id` (número de teléfono).
-- **Resumen Automático**: Cuando el historial supera 6 mensajes conversacionales, se resumen los viejos y se mantienen los 2 más recientes.
-- **Retry con Backoff**: `invoke_with_retry` maneja rate limits (429) con backoff exponencial (3 intentos).
+- **InjectedState**: El `user_phone` se declara como `Annotated[str, InjectedState("user_phone")]` en las tools — el LLM nunca lo ve en el schema, LangGraph lo inyecta automáticamente desde el estado del grafo.
+- **RAG**: El agente de información combina búsqueda semántica (Pinecone) con generación (LLM) para responder solo con datos reales de FM.inc.
+- **Pinecone Inference**: Embeddings server-side con `llama-text-embed-v2` (1024 dims). El seeding divide `fm_data.txt` en una sección por chunk usando `CharacterTextSplitter`.
+- **Memoria Persistente**: `AsyncPostgresSaver` persiste conversaciones por `thread_id` (número de teléfono) y sobrevive reinicios del servidor.
+- **Resumen Automático**: Cuando el historial supera 6 mensajes conversacionales, se resumen los mensajes viejos con `RemoveMessage` y se mantienen solo los 2 más recientes.
+- **Format Review sin LLM**: El nodo de formato usa Python puro (regex) en vez de un LLM — elimina markdown, convierte listas a bullets con `•` y trunca a 1000 caracteres. Esto eliminó ~27s de latencia que tenía el nodo anterior basado en un LLM.
+- **Retry con Backoff Exponencial**: `invoke_with_retry` (tenacity) maneja `RateLimitError` (429) con espera exponencial: 2s → 4s → 8s, máximo 3 intentos. Necesario para modelos gratuitos en OpenRouter.
+- **tono_negocio**: Constante centralizada en `llm.py` que define el tono y estilo de respuesta para todos los agentes — rioplatense, conciso, sin markdown, con emojis moderados.
+- **n8n Human-in-the-loop**: Workflow de n8n escucha cambios en la tabla `tickets` vía PostgreSQL LISTEN/NOTIFY y notifica al equipo de soporte por Gmail con botones de aprobación (Send and Wait).
 
 ## 🧪 Tests
 
@@ -156,9 +160,9 @@ support/
 pytest tests/ -v
 ```
 
-15 tests que verifican:
+Tests que verifican:
 - Parsing de webhooks Kapso (text, imagen, vacío)
 - CRUD de tickets con SQLite en memoria
 - Enums de estado y categoría
-- Límite de caracteres de WhatsApp
+- Limpieza de markdown y límite de caracteres en format review
 - Routing de intents

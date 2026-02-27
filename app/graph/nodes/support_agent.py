@@ -12,6 +12,8 @@ Conceptos clave:
 
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
+from typing import Annotated
 
 from app.core.llm import invoke_with_retry, llm, tono_negocio
 from app.db.database import SessionLocal
@@ -52,12 +54,12 @@ FORMATO DE RESPUESTA:
 # ═══════════════════════════════════════════════════════════════
 
 @tool
-def create_ticket(phone_number: str, description: str, category: str) -> str:
+def create_ticket(user_phone: Annotated[str, InjectedState("user_phone")], description: str, category: str) -> str:
     """
     Crea un nuevo ticket de soporte técnico en la base de datos.
 
     Args:
-        phone_number: Número de WhatsApp del usuario (ej: "5491112345678")
+        user_phone: Número de WhatsApp del usuario (ej: "5491112345678")
         description: Descripción del problema reportado
         category: Categoría del problema. Debe ser una de: señal, internet, facturacion, equipo, otro
     """
@@ -69,7 +71,7 @@ def create_ticket(phone_number: str, description: str, category: str) -> str:
     session = SessionLocal()
     try:
         ticket = Ticket(
-            phone_number=phone_number,
+            phone_number=user_phone,
             description=description,
             category=cat,
             status=TicketStatus.ABIERTO,
@@ -118,18 +120,18 @@ def get_ticket_status(ticket_id: int) -> str:
 
 
 @tool
-def list_user_tickets(phone_number: str) -> str:
+def list_user_tickets(user_phone: Annotated[str, InjectedState("user_phone")]) -> str:
     """
     Lista todos los tickets de soporte de un usuario.
 
     Args:
-        phone_number: Número de WhatsApp del usuario (ej: "5491112345678")
+        user_phone: Número de WhatsApp del usuario (ej: "5491112345678")
     """
     session = SessionLocal()
     try:
         tickets = (
             session.query(Ticket)
-            .filter(Ticket.phone_number == phone_number)
+            .filter(Ticket.phone_number == user_phone)
             .order_by(Ticket.created_at.desc())
             .limit(10)
             .all()
@@ -193,12 +195,9 @@ async def support_agent_node(state: SupportState) -> dict:
     Si el LLM genera tool_calls, el grafo los enruta a support_tools.
     Si no, la respuesta va directo a format_review.
     """
-    user_phone = state.get("user_phone", "desconocido")
-
     summary = state.get("summary", "")
     messages = [
-        SystemMessage(content=SUPPORT_SYSTEM_PROMPT),
-        SystemMessage(content=f"[Número del usuario: {user_phone}]"),
+        SystemMessage(content=SUPPORT_SYSTEM_PROMPT)
     ]
     if summary:
         messages.append(SystemMessage(content=f"Resumen de la conversación anterior: {summary}"))
