@@ -2,80 +2,62 @@
 Nodo de Revisión de Formato.
 
 Último nodo del grafo. Toma la respuesta raw de los agentes y la
-adapta para el formato de WhatsApp.
+adapta para el formato de WhatsApp usando lógica Python pura — sin LLM.
 
-Conceptos clave para aprender:
-- Este nodo es un "post-procesador": no genera contenido nuevo,
-  sino que transforma la respuesta existente.
-- Es importante porque WhatsApp tiene limitaciones de formato
-  (no soporta markdown completo, tiene límite de caracteres, etc.)
+Transformaciones que aplica:
+- Elimina markdown no soportado por WhatsApp (##, ```, _italic_)
+- Convierte **negrita** al formato de WhatsApp (*negrita*)
+- Convierte listas markdown (- item) a bullets con emoji (• item)
+- Trunca a MAX_WHATSAPP_CHARS si el mensaje es demasiado largo
 """
 
 import logging
+import re
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage
 
 logger = logging.getLogger(__name__)
 
-from app.core.llm import invoke_with_retry, llm_format as llm
 from app.graph.state import SupportState
 
-MAX_WHATSAPP_CHARS = 1000
+MAX_WHATSAPP_CHARS = 1500
 
-FORMAT_SYSTEM_PROMPT = """Eres un formateador de mensajes para WhatsApp de FM.inc.
 
-Tu tarea es tomar la respuesta del agente y adaptarla para WhatsApp.
+def _format_for_whatsapp(text: str) -> str:
+    # 1. Eliminar bloques de código (``` ... ```)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL).strip()
 
-REGLAS DE FORMATO:
-1. Máximo 1000 caracteres.
-2. Usa emojis apropiados para hacer el mensaje amigable (📱, ✅, 📋, 💰, 🌐, etc.)
-3. No uses markdown (no **, no ##, no ```). WhatsApp usa *negrita* y _cursiva_.
-4. Usa saltos de línea para separar secciones.
-5. Si hay una lista, usa emojis como bullets (• o ▸).
-6. Mantén un tono profesional pero cercano.
-7. Si la respuesta original es corta, no la alargues innecesariamente.
+    # 2. Eliminar encabezados markdown (## Título → Título)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
 
-IMPORTANTE: Devolvé SOLO el mensaje formateado, sin explicaciones.
-"""
+    # 3. Convertir **negrita** → *negrita* (formato WhatsApp)
+    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+
+    # 4. Eliminar _cursiva_ markdown (WhatsApp usa _ también, pero evitar dobles)
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", text)
+
+    # 5. Convertir listas markdown (- item o * item) a bullets con •
+    text = re.sub(r"^\s*[-*]\s+", "• ", text, flags=re.MULTILINE)
+
+    # 6. Colapsar más de dos saltos de línea consecutivos
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 7. Truncar si supera el límite de WhatsApp
+    if len(text) > MAX_WHATSAPP_CHARS:
+        text = text[:MAX_WHATSAPP_CHARS - 3] + "..."
+
+    return text.strip()
 
 
 async def format_review_node(state: SupportState) -> dict:
     """
-    Nodo de formato: adapta la respuesta para WhatsApp.
+    Nodo de formato: adapta la respuesta para WhatsApp sin usar LLM.
 
-    Toma state["response"] (la respuesta raw del agente) y la
-    pasa por el LLM para formatearla según las reglas de WhatsApp.
-
-    Retorna el response formateado y lo agrega a messages.
+    Busca la respuesta en state["response"].
     """
-    # Obtener respuesta: primero de state["response"], si no del último AIMessage
-    raw_response = state.get("response", "")
-    if not raw_response:
-        # Buscar el último AIMessage en el historial (patrón ToolNode)
-        for msg in reversed(state["messages"]):
-            if isinstance(msg, AIMessage) and msg.content and not msg.tool_calls:
-                raw_response = msg.content
-                break
-
-    if not raw_response:
-        formatted = "😅 Disculpá, no pude procesar tu mensaje. ¿Podrías intentar de nuevo?"
-    else:
-        try:
-            result = await invoke_with_retry(llm, [
-                SystemMessage(content=FORMAT_SYSTEM_PROMPT),
-                SystemMessage(content=f"RESPUESTA ORIGINAL:\n{raw_response}"),
-            ])
-            formatted = result.content.strip()
-        except Exception as e:
-            logger.error(f"❌ Error formateando respuesta: {e}")
-            formatted = raw_response  # Fallback: enviar sin formatear
-
-    # Asegurar límite de caracteres
-    if len(formatted) > MAX_WHATSAPP_CHARS:
-        formatted = formatted[:MAX_WHATSAPP_CHARS - 3] + "..."
-
-    logger.info(f"📝 Format Review: respuesta formateada ({len(formatted)} chars)")
-
+    raw_response = state["response"]
+    formatted = _format_for_whatsapp(raw_response) if raw_response else "😅 Disculpá, no pude procesar tu mensaje. ¿Podrías intentar de nuevo?"
+    logger.info(f"📝 Format Review: {len(raw_response)} → {len(formatted)} chars")
     return {
-        "response": formatted,
+        "response": formatted
     }

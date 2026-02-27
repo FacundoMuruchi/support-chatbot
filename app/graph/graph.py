@@ -45,23 +45,6 @@ def _inject_phone(state: SupportState) -> dict:
         if tc["name"] in ("create_ticket", "list_user_tickets"):
             tc["args"]["phone_number"] = user_phone
 
-        # Guardia: si create_ticket tiene descripción vaga, rechazar
-        if tc["name"] == "create_ticket":
-            desc = tc["args"].get("description", "")
-            if len(desc.strip()) < 15:
-                # No crear ticket — devolver mensaje pidiendo detalles
-                from langchain_core.messages import ToolMessage
-                return {
-                    "messages": [
-                        ToolMessage(
-                            content="ERROR: La descripción es demasiado vaga. "
-                                    "Preguntale al usuario qué problema específico tiene "
-                                    "antes de crear el ticket.",
-                            tool_call_id=tc["id"],
-                        )
-                    ]
-                }
-
     tool_node = ToolNode(tools)
     return tool_node.invoke(state)
 
@@ -94,19 +77,11 @@ def build_graph(checkpointer=None):
 
     # Edges
     graph.add_edge(START, "triage")
-    graph.add_conditional_edges(
-        "triage",
-        route_by_intent,
-        {"info": "info_agent", "soporte": "support_agent"},
-    )
+    graph.add_conditional_edges("triage", route_by_intent, {"info": "info_agent", "soporte": "support_agent"})
     graph.add_edge("info_agent", "format_review")
 
     # ReAct loop: support_agent → (tools? → support_agent) | format_review
-    graph.add_conditional_edges(
-        "support_agent",
-        _route_support,
-        {"support_tools": "support_tools", "format_review": "format_review"},
-    )
+    graph.add_conditional_edges("support_agent", _route_support)
     graph.add_edge("support_tools", "support_agent")
 
     # Después de format_review: ¿hay que resumir?

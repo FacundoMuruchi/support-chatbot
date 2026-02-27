@@ -4,11 +4,6 @@ Instancia compartida del LLM (OpenRouter).
 Todos los nodos del grafo importan el LLM desde acá
 en vez de crear su propia instancia.
 
-Tres variantes:
-- llm: temperatura 0.3, para respuestas naturales (info_agent)
-- llm_strict: temperatura 0, para clasificación y tool calling (triage, support_agent)
-- llm_format: modelo rápido para formato y resumen
-
 Retry: todas las instancias tienen retry automático con backoff exponencial
 para manejar rate limits de modelos free en OpenRouter (error 429).
 """
@@ -27,22 +22,21 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-def _create_llm(model: str, temperature: float) -> ChatOpenAI:
-    """Crea una instancia de ChatOpenAI con configuración compartida."""
-    return ChatOpenAI(
-        model=model,
+# ── Instancias ──
+llm = ChatOpenAI(
+        model="openai/gpt-oss-120b:free",
         openai_api_key=settings.openrouter_api_key,
         openai_api_base=settings.openrouter_base_url,
-        temperature=temperature,
+        temperature=0,
     )
 
-
-# ── Instancias ──
-llm = _create_llm("arcee-ai/trinity-large-preview:free", temperature=0.3)
-llm_strict = _create_llm("arcee-ai/trinity-large-preview:free", temperature=0)
-llm_format = _create_llm("nvidia/nemotron-3-nano-30b-a3b:free", temperature=0.5)
-
+tono_negocio = (
+    "Usá un tono amigable, cercano y profesional. "
+    "Hablá siempre de 'vos' (español rioplatense). "
+    "Sé conciso, breve y directo. "
+    "Usá emojis con moderación para hacer el mensaje más cálido. "
+    "Nunca uses tablas, recuerda que estas no se muestran correctamente en WhatsApp. "
+)
 
 # ── Retry wrapper ──
 @retry(

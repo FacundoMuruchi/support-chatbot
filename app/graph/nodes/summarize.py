@@ -12,7 +12,7 @@ importante se preserva en el resumen.
 
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 
-from app.core.llm import invoke_with_retry, llm_format as llm
+from app.core.llm import invoke_with_retry, llm
 from app.graph.state import SupportState
 
 # Cantidad de mensajes conversacionales antes de activar el resumen

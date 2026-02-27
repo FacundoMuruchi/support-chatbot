@@ -13,13 +13,13 @@ Conceptos clave:
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 
-from app.core.llm import invoke_with_retry, llm_strict as llm
+from app.core.llm import invoke_with_retry, llm, tono_negocio
 from app.db.database import SessionLocal
 from app.db.models import Ticket, TicketCategory, TicketStatus
 from app.graph.state import SupportState
 
 # ── Prompt del agente de soporte ─────────────────────────────────
-SUPPORT_SYSTEM_PROMPT = """Eres el agente de soporte técnico de FM.inc, una empresa de telefonía móvil.
+SUPPORT_SYSTEM_PROMPT = f"""Eres el agente de soporte técnico de FM.inc, una empresa de telefonía móvil.
 
 REGLAS ESTRICTAS PARA TICKETS:
 1. NUNCA crees un ticket en el primer mensaje, incluso si parece tener cierta información.
@@ -41,6 +41,9 @@ HERRAMIENTAS:
 2. update_ticket: Agrega detalles extras a un ticket que YA fue creado.
 3. get_ticket_status: Estado de un ticket por ID
 4. list_user_tickets: Lista tickets del usuario
+
+FORMATO DE RESPUESTA:
+{tono_negocio}
 """
 
 
@@ -203,4 +206,7 @@ async def support_agent_node(state: SupportState) -> dict:
 
     response = await invoke_with_retry(llm_with_tools, messages)
 
-    return {"messages": [response]}
+    return {
+        "response": response.content,
+        "messages": [response]
+    }

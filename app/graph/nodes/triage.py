@@ -19,7 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
-from app.core.llm import invoke_with_retry, llm_strict as llm
+from app.core.llm import invoke_with_retry, llm
 from app.graph.state import SupportState
 
 # ── Prompt del clasificador ─────────────────────────────────────

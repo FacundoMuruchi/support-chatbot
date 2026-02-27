@@ -113,7 +113,7 @@ Pagá en efectivo en cualquier sucursal de Rapipago o Pago Fácil con el código
 # Preguntas Frecuentes
 
 ## ¿Cómo activo mi chip FM.inc?
-Insertá el chip en tu celular y esperá 15 minutos. Si no se activa automáticamente, llamá al 0800-555-FMINC o escribinos por WhatsApp al +54 9 11 2503-7150.
+Insertá el chip en tu celular y esperá 15 minutos. Si no se activa automáticamente, llamá al 0800-555-FMINC o escribinos por WhatsApp al +54 9 11 1234-5678.
 
 ## ¿Puedo cambiar de plan en cualquier momento?
 Sí, podés cambiar de plan desde la app FM.inc, llamando al 0800, o por WhatsApp. El cambio se aplica en tu próximo ciclo de facturación. Subir de plan es inmediato, bajar de plan se aplica al mes siguiente.

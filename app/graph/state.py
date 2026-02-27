@@ -38,4 +38,3 @@ class SupportState(MessagesState):
     context: str
     response: str
     summary: str
-

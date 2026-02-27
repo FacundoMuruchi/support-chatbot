@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from langchain_core.documents import Document
 from langchain_pinecone import PineconeVectorStore
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import settings
 from app.rag.vectorstore import embeddings
@@ -25,15 +24,25 @@ from app.rag.vectorstore import embeddings
 data_path = Path(__file__).parent.parent / "data" / "fm_data.txt"
 raw_text = data_path.read_text(encoding="utf-8")
 
-# ── Dividir en chunks ──
-splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50,
-    separators=["\n---\n", "\n## ", "\n# ", "\n\n", "\n"],
-)
-chunks = splitter.split_text(raw_text)
+# ── Dividir en chunks por sección ──
+sections = raw_text.split("\n# ")
 
-docs = [Document(page_content=chunk, metadata={"source": "fm_data.txt"}) for chunk in chunks]
+docs = []
+for section in sections:
+    content = section.strip()
+
+    # Ignorar secciones vacías
+    if not content:
+        continue
+
+    # Restaurar el "# " que se perdió al hacer el split
+    content = "# " + content
+
+    doc = Document(
+        page_content=content,
+        metadata={"source": "fm_data.txt"}
+    )
+    docs.append(doc)
 
 print(f"📄 Archivo: {data_path.name}")
 print(f"✂️  Chunks generados: {len(docs)}")

@@ -18,7 +18,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 logger = logging.getLogger(__name__)
 
-from app.core.llm import invoke_with_retry, llm
+from app.core.llm import invoke_with_retry, llm, tono_negocio
 from app.graph.state import SupportState
 from app.rag.vectorstore import get_retriever
 
@@ -36,10 +36,12 @@ REGLAS:
    Si no aparece en el contexto, decí:
    "No tengo información sobre eso. Te recomiendo contactar a nuestro equipo al 0800-555-FMINC."
 2. Para preguntas conversacionales (nombre, saludos, etc.), usá el historial de chat.
-3. Sé amigable, conciso y profesional. Usá "vos" (español rioplatense).
-4. Si mencionás precios, siempre incluí el signo $ y la moneda (ARS). Ej: $12.990 ARS/mes.
-5. Si el usuario pregunta por varios planes, comparalos brevemente.
-6. No inventes información, descuentos ni promociones que no estén en el contexto.
+3. Si mencionás precios, siempre incluí el signo $ y la moneda (ARS). Ej: $12.990 ARS/mes.
+4. Si el usuario pregunta por varios planes, comparalos brevemente.
+5. No inventes información, descuentos ni promociones que no estén en el contexto.
+
+FORMATO DE RESPUESTA:
+{tono_negocio}
 """
 
 
@@ -61,7 +63,7 @@ async def info_agent_node(state: SupportState) -> dict:
     query = last_message.content
 
     # 2. Recuperar documentos de Pinecone
-    retriever = get_retriever(k=5)
+    retriever = get_retriever(k=2)
     docs = await retriever.ainvoke(query)
 
     # 3. Formatear el contexto
@@ -70,7 +72,7 @@ async def info_agent_node(state: SupportState) -> dict:
 
     # 4. Generar respuesta con el LLM (con resumen si existe)
     summary = state.get("summary", "")
-    messages = [SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))]
+    messages = [SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context, tono_negocio=tono_negocio))]
     if summary:
         messages.append(SystemMessage(content=f"Resumen de la conversación anterior: {summary}"))
     messages.extend(state["messages"])
@@ -83,5 +85,5 @@ async def info_agent_node(state: SupportState) -> dict:
     return {
         "context": context,
         "response": response.content,
-        "messages": [AIMessage(content=response.content)],
+        "messages": [response]
     }
